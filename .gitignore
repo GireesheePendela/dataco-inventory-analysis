@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---- Project-specific ----
+# Raw dataset is ~96 MB: keep it out of git, download from Kaggle instead.
+data/DataCoSupplyChainDataset.csv
+data/tokenized_access_logs.csv
+# Keep the small data dictionary and the finished metrics file tracked:
+!data/DescriptionDataCoSupplyChain.csv
+!outputs/sku_metrics.csv

@@ -1,0 +1,6 @@
+# Deployed app dependencies ONLY (Streamlit Community Cloud installs this file).
+# Keep this list minimal so the deployed app stays lean.
+streamlit
+pandas
+duckdb
+plotly

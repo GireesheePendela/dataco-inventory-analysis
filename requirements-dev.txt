@@ -1,0 +1,5 @@
+# Local analysis dependencies (NOT installed on Streamlit Cloud).
+# Install locally with:  pip install -r requirements.txt -r requirements-dev.txt
+jupyter
+matplotlib
+numpy
