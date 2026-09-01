@@ -1,10 +1,18 @@
 """
 Week 1 — SQL aggregation layer.
 
-Loads the raw DataCo CSV into DuckDB and aggregates it to a
-SKU x month demand table. This is the SQL showcase: do the grouping
-and the demand/lead-time statistics in SQL, then hand the result to
-pandas.
+Aggregates the raw DataCo order rows into two tidy tables using DuckDB SQL:
+
+  outputs/demand_by_sku_month.csv   one row per (SKU, month): units, order lines, avg price
+  outputs/leadtime_by_sku.csv       one row per SKU: mean / std of real shipping days
+
+pandas then turns demand_by_sku_month into per-SKU demand statistics
+(mean demand, sigma demand) and joins the lead-time table onto it.
+
+Note on loading: DuckDB's CSV reader rejects this file (it has cp1252 bytes and
+DuckDB validates encoding strictly). pandas reads it with encoding='latin-1',
+then the DataFrame is registered as a DuckDB view — so the *aggregation* is still
+100% SQL, only the file read happens in pandas.
 
 Run from the repo root:
     python -m src.extract
@@ -16,30 +24,61 @@ import duckdb
 import pandas as pd
 
 RAW_CSV = Path("data/DataCoSupplyChainDataset.csv")
-DEMAND_TABLE_OUT = Path("outputs/demand_by_sku_month.csv")
+DEMAND_OUT = Path("outputs/demand_by_sku_month.csv")
+LEADTIME_OUT = Path("outputs/leadtime_by_sku.csv")
+
+# Source timestamps look like  1/31/2018 22:56  (US M/D/YYYY, no zero-padding)
+ORDER_DATE_FORMAT = "%m/%d/%Y %H:%M"
+
+DEMAND_BY_SKU_MONTH_SQL = f"""
+SELECT
+    "Product Card Id"                                          AS sku,
+    any_value("Product Name")                                 AS product_name,
+    date_trunc('month',
+        strptime("order date (DateOrders)", '{ORDER_DATE_FORMAT}')) AS month,
+    SUM("Order Item Quantity")                                AS units,
+    COUNT(*)                                                  AS order_lines,
+    AVG("Product Price")                                      AS avg_price
+FROM raw
+GROUP BY sku, month
+ORDER BY sku, month
+"""
+
+# Lead-time stats are computed at the SKU grain (over every order for that SKU),
+# not SKU x month — a single order in a month gives no usable standard deviation.
+LEADTIME_BY_SKU_SQL = """
+SELECT
+    "Product Card Id"                        AS sku,
+    COUNT(*)                                 AS n_orders,
+    AVG("Days for shipping (real)")          AS avg_lead_time_days,
+    STDDEV_SAMP("Days for shipping (real)")  AS std_lead_time_days
+FROM raw
+GROUP BY sku
+ORDER BY sku
+"""
 
 
-def build_demand_table(raw_csv: Path = RAW_CSV) -> pd.DataFrame:
-    """
-    Aggregate raw order rows -> one row per (SKU, month) with:
-      - total_quantity        SUM("Order Item Quantity")
-      - avg_price             AVG("Product Price")
-      - avg_ship_days         AVG("Days for shipping (real)")     <- lead time
-      - std_ship_days         STDDEV("Days for shipping (real)")  <- lead-time sigma
+def run() -> tuple[pd.DataFrame, pd.DataFrame]:
+    raw = pd.read_csv(RAW_CSV, encoding="latin-1")
 
-    TODO:
-      - read RAW_CSV with read_csv_auto (DuckDB handles the latin-1 quirk
-        better than pandas; if not, fall back to pandas encoding='latin-1')
-      - GROUP BY "Product Card Id", date_trunc('month', "order date (DateOrders)")
-      - keep lead time as its own column, do NOT hard-code a constant
-    """
     con = duckdb.connect()
-    # TODO: write the aggregation query here
-    raise NotImplementedError
+    con.register("raw", raw)
+
+    demand = con.sql(DEMAND_BY_SKU_MONTH_SQL).df()
+    leadtime = con.sql(LEADTIME_BY_SKU_SQL).df()
+    con.close()
+
+    return demand, leadtime
 
 
 if __name__ == "__main__":
-    df = build_demand_table()
-    DEMAND_TABLE_OUT.parent.mkdir(exist_ok=True)
-    df.to_csv(DEMAND_TABLE_OUT, index=False)
-    print(f"wrote {len(df):,} rows -> {DEMAND_TABLE_OUT}")
+    demand, leadtime = run()
+
+    DEMAND_OUT.parent.mkdir(exist_ok=True)
+    demand.to_csv(DEMAND_OUT, index=False)
+    leadtime.to_csv(LEADTIME_OUT, index=False)
+
+    print(f"demand_by_sku_month : {len(demand):>6,} rows  ->  {DEMAND_OUT}")
+    print(f"leadtime_by_sku     : {len(leadtime):>6,} rows  ->  {LEADTIME_OUT}")
+    print(f"SKUs: {demand['sku'].nunique()}   "
+          f"months: {demand['month'].min():%Y-%m} .. {demand['month'].max():%Y-%m}")
