@@ -1,5 +1,5 @@
 """
-Week 3 — thin Streamlit display layer.
+Thin Streamlit display layer.
 
 RULE: this file only READS outputs/sku_metrics.csv. No aggregation, no DuckDB,
 no heavy compute here — that all happened in the notebook / src/ and was baked

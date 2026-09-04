@@ -1,5 +1,5 @@
 """
-Week 1 — SQL aggregation layer.
+SQL aggregation layer.
 
 Aggregates the raw DataCo order rows into two tidy tables using DuckDB SQL:
 

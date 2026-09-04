@@ -1,26 +1,34 @@
 """
-Week 2 — the four analytical layers, as reusable functions.
+The four analytical layers, as reusable functions.
 
-Input:  per-SKU demand + lead-time stats (from src/extract.py output).
+Input:  per-SKU demand + lead-time stats  (outputs/sku_demand_profile.csv).
 Output: outputs/sku_metrics.csv  (one row per SKU; the ONLY file app.py reads).
 
-Every function takes a DataFrame and returns a DataFrame with new columns,
-so they can be chained in the notebook.
+Every function takes a DataFrame and returns a copy with new columns, so they
+can be chained in the notebook.
 """
 
 from __future__ import annotations
 
-import math
-
+import numpy as np
 import pandas as pd
 
 # ---------------------------------------------------------------------------
-# ASSUMPTIONS — the dataset does NOT contain these. You supply and document them.
-# Revisit these numbers in the README with a one-line justification each.
+# ASSUMPTIONS — the dataset does NOT contain these. Supplied and documented here
+# and in the README. Change them in ONE place.
 # ---------------------------------------------------------------------------
-S = 50.0          # ordering cost per order ($/order)         <-- TODO justify
-H = 0.25          # holding cost per unit per year ($/unit/yr) <-- TODO justify
-                  # (often expressed as a % of unit price; decide which and note it)
+S = 75.0        # ordering cost per order ($/order): staff time to raise a PO,
+                # receive the shipment, and match the invoice. Typical small-
+                # operation figure; industry range ~$50-100.
+
+H_RATE = 0.25   # annual holding cost as a FRACTION OF UNIT PRICE:
+                # ~5% cost of capital + ~15% warehouse/insurance/handling
+                # + ~5% obsolescence & shrinkage. Standard 20-30% range.
+                # Applied to price, not a flat $/unit, so it scales across a
+                # catalogue spanning $10 to $2,000 items.
+
+MONTHS_PER_YEAR = 12
+DAYS_PER_YEAR = 365
 
 Z_BY_SERVICE_LEVEL = {
     0.90: 1.2816,
@@ -30,32 +38,74 @@ Z_BY_SERVICE_LEVEL = {
 BASELINE_SERVICE_LEVEL = 0.95
 
 
+def holding_cost_per_unit(price: pd.Series | float) -> pd.Series | float:
+    """Annual $ cost of holding one unit, given its price."""
+    return H_RATE * price
+
+
+def _eoq(annual_demand: pd.Series, price: pd.Series, s: float = S) -> pd.Series:
+    """Economic order quantity = sqrt(2 * D * S / H_unit)."""
+    return np.sqrt(2.0 * annual_demand * s / holding_cost_per_unit(price))
+
+
 def annualize_demand(df: pd.DataFrame) -> pd.DataFrame:
-    """Scale the observed demand up to an annual figure D (used by ABC and EOQ)."""
-    raise NotImplementedError
+    """Add annual_demand (units/year) by scaling the mean monthly rate up by 12.
+
+    Scales the *rate*, so SKUs with only a few months of history are still put
+    on an annual footing rather than penalised for a short observation window.
+    """
+    out = df.copy()
+    out["annual_demand"] = out["mean_monthly_demand"] * MONTHS_PER_YEAR
+    out["annual_demand_value"] = out["annual_demand"] * out["avg_price"]
+    return out
 
 
-def layer1_turnover(df: pd.DataFrame) -> pd.DataFrame:
+def layer1_turnover(df: pd.DataFrame, n_tiers: int = 3) -> pd.DataFrame:
+    """Layer 1 — implied inventory turnover, days-of-supply, and velocity tier.
+
+    There is no on-hand column, so average inventory is DERIVED from the classic
+    sawtooth cycle-stock model: stock falls linearly from a full order quantity
+    to zero, so average cycle stock = EOQ / 2. (Layer 4 adds the safety-stock
+    component; here we keep it to cycle stock.)
+
+        implied_turns          = annual_demand / (EOQ / 2)
+        implied_days_of_supply = 365 / implied_turns
+
+    IMPORTANT: because the proxy assumes cost-optimal (EOQ) ordering, these
+    numbers are a BEST-CASE benchmark. They rank SKUs by relative velocity; they
+    do NOT prove overstocking, which would need a real on-hand level. So Layer 1
+    outputs a relative 'velocity_tier' (Slow / Medium / Fast by tercile of turns)
+    rather than an absolute slow/fast verdict. slow_mover = bottom tier.
+
+    Needs annualize_demand() first. Does not use sigma, so 'insufficient_history'
+    SKUs need no special case here.
     """
-    Implied inventory turnover and days-of-supply per SKU.
-    No on-hand column exists, so average inventory is DERIVED (e.g. EOQ/2 or a
-    demand-based proxy). Label every output column 'implied_*'. Flag slow movers.
-    """
-    raise NotImplementedError
+    out = df.copy()
+    out["implied_eoq"] = _eoq(out["annual_demand"], out["avg_price"])
+    out["implied_avg_inventory_units"] = out["implied_eoq"] / 2.0
+    out["implied_avg_inventory_value"] = (
+        out["implied_avg_inventory_units"] * out["avg_price"]
+    )
+    out["implied_turns"] = out["annual_demand"] / out["implied_avg_inventory_units"]
+    out["implied_days_of_supply"] = DAYS_PER_YEAR / out["implied_turns"]
+
+    labels = ["Slow", "Medium", "Fast"][:n_tiers]
+    out["velocity_tier"] = pd.qcut(out["implied_turns"], q=n_tiers, labels=labels)
+    out["slow_mover"] = out["velocity_tier"] == "Slow"
+    return out
 
 
 def layer2_abc(df: pd.DataFrame) -> pd.DataFrame:
     """
     ABC classification.
-    annual_consumption_value = avg_price * annual_demand
-    -> sort desc -> cumulative % -> A (<=80%), B (<=95%), C (rest).
+    annual_demand_value -> sort desc -> cumulative % -> A (<=80%), B (<=95%), C.
     Also return the data needed to plot the Pareto curve.
     """
     raise NotImplementedError
 
 
-def layer3_eoq(df: pd.DataFrame, s: float = S, h: float = H) -> pd.DataFrame:
-    """EOQ = sqrt(2 * D * s / h) per SKU. Compare to observed order sizing."""
+def layer3_eoq(df: pd.DataFrame, s: float = S) -> pd.DataFrame:
+    """EOQ per SKU (see _eoq). Compare to observed order sizing."""
     raise NotImplementedError
 
 
@@ -65,19 +115,19 @@ def layer4_safety_stock(
     """
     safety_stock  = z * sigma_demand * sqrt(lead_time)
     reorder_point = (avg_demand * lead_time) + safety_stock
-    z from Z_BY_SERVICE_LEVEL. lead_time / sigma come from 'Days for shipping (real)'.
-    Keep lead_time as a passed-in column, never a literal.
+    z from Z_BY_SERVICE_LEVEL. 'insufficient_history' SKUs use a class-level
+    sigma fallback, not a per-SKU one.
     """
     raise NotImplementedError
 
 
-def total_cost(order_qty: float, d: float, s: float = S, h: float = H) -> float:
+def total_cost(order_qty: float, d: float, h_unit: float, s: float = S) -> float:
     """
     Annual inventory cost objective: ordering + holding.
-        (d / order_qty) * s  +  (order_qty / 2) * h
+        (d / order_qty) * s  +  (order_qty / 2) * h_unit
     Isolated on purpose — this becomes the objective for the v3 optimization layer.
     """
-    return (d / order_qty) * s + (order_qty / 2.0) * h
+    return (d / order_qty) * s + (order_qty / 2.0) * h_unit
 
 
 def mismatch_analysis(df: pd.DataFrame) -> pd.DataFrame:

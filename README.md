@@ -27,9 +27,11 @@ therefore labelled **"implied"**.
 
 | Symbol | Meaning | Value | Justification |
 |--------|---------|-------|---------------|
-| `S` | ordering cost per order | _TODO_ | _TODO_ |
-| `H` | holding cost per unit per year | _TODO_ | _TODO_ |
+| `S` | ordering cost per order | **$75** | staff time to raise a PO, receive the shipment, and match the invoice; industry range ~$50–100 |
+| `H_RATE` | annual holding cost as a fraction of unit price | **25%** | ~5% cost of capital + ~15% warehouse/insurance/handling + ~5% obsolescence & shrinkage (standard 20–30%). Applied to price, not a flat $/unit, so it scales across a $10–$2,000 catalogue. |
 | service level | baseline (also tested at 90% / 99%) | 95% (z ≈ 1.65) | industry-standard default |
+
+Defined in one place: `src/inventory.py` (top of file).
 
 ## Repo layout
 
