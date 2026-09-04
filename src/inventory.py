@@ -95,13 +95,30 @@ def layer1_turnover(df: pd.DataFrame, n_tiers: int = 3) -> pd.DataFrame:
     return out
 
 
+ABC_CUTOFFS = {"A": 0.80, "B": 0.95}  # cumulative share of annual_demand_value
+
+
 def layer2_abc(df: pd.DataFrame) -> pd.DataFrame:
+    """Layer 2 — ABC classification by annual consumption value.
+
+    Sorts SKUs descending by annual_demand_value (needs annualize_demand() to
+    have run first), then classifies by cumulative share of total value:
+        A = cumulative <= 80%, B = cumulative <= 95%, C = the rest.
+
+    Adds: value_rank, cumulative_value, cumulative_pct, abc_class.
+    The returned frame is already sorted and carries cumulative_pct, so it's
+    exactly what the notebook needs to plot the Pareto curve (bar = value per
+    SKU in rank order, line = cumulative_pct).
     """
-    ABC classification.
-    annual_demand_value -> sort desc -> cumulative % -> A (<=80%), B (<=95%), C.
-    Also return the data needed to plot the Pareto curve.
-    """
-    raise NotImplementedError
+    out = df.sort_values("annual_demand_value", ascending=False).reset_index(drop=True)
+    out["value_rank"] = out.index + 1
+    out["cumulative_value"] = out["annual_demand_value"].cumsum()
+    out["cumulative_pct"] = out["cumulative_value"] / out["annual_demand_value"].sum()
+
+    out["abc_class"] = "C"
+    out.loc[out["cumulative_pct"] <= ABC_CUTOFFS["B"], "abc_class"] = "B"
+    out.loc[out["cumulative_pct"] <= ABC_CUTOFFS["A"], "abc_class"] = "A"
+    return out
 
 
 def layer3_eoq(df: pd.DataFrame, s: float = S) -> pd.DataFrame:
