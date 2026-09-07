@@ -122,8 +122,45 @@ def layer2_abc(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def layer3_eoq(df: pd.DataFrame, s: float = S) -> pd.DataFrame:
-    """EOQ per SKU (see _eoq). Compare to observed order sizing."""
-    raise NotImplementedError
+    """Layer 3 — economic order quantity per SKU.
+
+        eoq = sqrt(2 * D * S / H_unit)
+
+    Same value as Layer 1's implied_eoq; there it was an inventory proxy, here
+    it is examined as an ordering policy and priced.
+
+    Adds:
+        eoq                  cost-minimising order quantity (units)
+        eoq_orders_per_year  D / eoq
+        eoq_cycle_days       365 / eoq_orders_per_year
+        eoq_annual_cost      ordering + holding cost at eoq (the minimum)
+        monthly_order_size   naive baseline: one month of demand per order
+        monthly_annual_cost  ordering + holding cost under the monthly baseline
+        eoq_saving_vs_monthly    monthly_annual_cost - eoq_annual_cost
+        eoq_saving_pct           saving as a share of the monthly-baseline cost
+
+    Note: the dataset records customer sales, not the business's own purchase
+    orders, so real supplier order sizing is not observable. The comparison is
+    against a common default policy (reorder monthly) rather than actuals.
+
+    Needs annualize_demand() first (uses annual_demand, avg_price,
+    mean_monthly_demand).
+    """
+    out = df.copy()
+    h_unit = holding_cost_per_unit(out["avg_price"])
+
+    out["eoq"] = _eoq(out["annual_demand"], out["avg_price"], s)
+    out["eoq_orders_per_year"] = out["annual_demand"] / out["eoq"]
+    out["eoq_cycle_days"] = DAYS_PER_YEAR / out["eoq_orders_per_year"]
+    out["eoq_annual_cost"] = total_cost(out["eoq"], out["annual_demand"], h_unit, s)
+
+    out["monthly_order_size"] = out["mean_monthly_demand"]
+    out["monthly_annual_cost"] = total_cost(
+        out["monthly_order_size"], out["annual_demand"], h_unit, s
+    )
+    out["eoq_saving_vs_monthly"] = out["monthly_annual_cost"] - out["eoq_annual_cost"]
+    out["eoq_saving_pct"] = out["eoq_saving_vs_monthly"] / out["monthly_annual_cost"]
+    return out
 
 
 def layer4_safety_stock(
