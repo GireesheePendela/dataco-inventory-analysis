@@ -166,13 +166,64 @@ def layer3_eoq(df: pd.DataFrame, s: float = S) -> pd.DataFrame:
 def layer4_safety_stock(
     df: pd.DataFrame, service_level: float = BASELINE_SERVICE_LEVEL
 ) -> pd.DataFrame:
+    """Layer 4 — safety stock and reorder point per SKU.
+
+        safety_stock  = z * sigma_daily_demand * sqrt(lead_time_days)
+        reorder_point = avg_daily_demand * lead_time_days + safety_stock
+
+    Everything is put on a DAILY footing first: annual_demand / 365 for the mean,
+    and monthly sigma scaled down by sqrt(days_per_month) for the daily sigma
+    (square-root-of-time rule). Lead time is already in days.
+
+    Only demand variability is buffered here; lead-time variability
+    (std_lead_time_days) is carried through untouched as the bridge to the v2
+    logistics layer, and the tight lead-time spread in this data (~1.6 days)
+    means it would move the numbers little.
+
+    insufficient_history SKUs (and the 9 with a NaN monthly sigma) do NOT get a
+    per-SKU sigma. They borrow the median coefficient of variation
+    (sigma / mean) of their ABC class and apply it to their OWN mean demand, so
+    a low-volume item is not handed a high-volume item's absolute sigma.
+    Overall median CV is used if a class has no reliable SKUs. sigma_source
+    records which path each row took.
+
+    Columns added: avg_daily_demand, sigma_daily_demand, sigma_source,
+    demand_over_leadtime, safety_stock_{90,95,99}, reorder_point_{90,95,99},
+    and unsuffixed safety_stock / reorder_point / safety_stock_value at the
+    chosen service_level.
     """
-    safety_stock  = z * sigma_demand * sqrt(lead_time)
-    reorder_point = (avg_demand * lead_time) + safety_stock
-    z from Z_BY_SERVICE_LEVEL. 'insufficient_history' SKUs use a class-level
-    sigma fallback, not a per-SKU one.
-    """
-    raise NotImplementedError
+    out = df.copy()
+    days_per_month = DAYS_PER_YEAR / MONTHS_PER_YEAR
+
+    out["avg_daily_demand"] = out["annual_demand"] / DAYS_PER_YEAR
+    sigma_daily = out["std_monthly_demand"] / np.sqrt(days_per_month)
+
+    reliable = (~out["insufficient_history"]) & sigma_daily.notna()
+    cv = sigma_daily[reliable] / out.loc[reliable, "avg_daily_demand"]
+    class_cv = cv.groupby(out.loc[reliable, "abc_class"]).median()
+    overall_cv = cv.median()
+
+    out["sigma_daily_demand"] = sigma_daily
+    need_fallback = ~reliable
+    fallback_cv = out.loc[need_fallback, "abc_class"].map(class_cv).fillna(overall_cv)
+    out.loc[need_fallback, "sigma_daily_demand"] = (
+        fallback_cv.to_numpy() * out.loc[need_fallback, "avg_daily_demand"].to_numpy()
+    )
+    out["sigma_source"] = np.where(need_fallback, "class_fallback", "per_sku")
+
+    out["demand_over_leadtime"] = out["avg_daily_demand"] * out["avg_lead_time_days"]
+
+    for lvl, z in Z_BY_SERVICE_LEVEL.items():
+        tag = str(round(lvl * 100))
+        ss = z * out["sigma_daily_demand"] * np.sqrt(out["avg_lead_time_days"])
+        out[f"safety_stock_{tag}"] = ss
+        out[f"reorder_point_{tag}"] = out["demand_over_leadtime"] + ss
+
+    tag = str(round(service_level * 100))
+    out["safety_stock"] = out[f"safety_stock_{tag}"]
+    out["reorder_point"] = out[f"reorder_point_{tag}"]
+    out["safety_stock_value"] = out["safety_stock"] * out["avg_price"]
+    return out
 
 
 def total_cost(order_qty: float, d: float, h_unit: float, s: float = S) -> float:
