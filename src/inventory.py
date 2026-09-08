@@ -236,12 +236,46 @@ def total_cost(order_qty: float, d: float, h_unit: float, s: float = S) -> float
 
 
 def mismatch_analysis(df: pd.DataFrame) -> pd.DataFrame:
+    """The punchline — where is buffer capital mis-allocated versus item value?
+
+    Layer 1's turnover is algebraically collinear with ABC value, so it cannot be
+    the comparison. This uses an independent signal instead:
+
+        buffer_intensity = safety_stock_value / annual_demand_value
+                         (dollars of buffer per dollar of yearly throughput)
+
+    buffer_intensity is driven by a SKU's demand coefficient of variation and
+    lead time, not by its value, so crossing it against abc_class is meaningful.
+
+    Adds:
+        buffer_intensity
+        buffer_intensity_tier   Light / Medium / Heavy (terciles)
+        buffer_benchmark_value  median-intensity buffer for this SKU's throughput
+        excess_buffer_value     safety_stock_value - benchmark, floored at 0
+        buffer_flag             efficient | watch (Heavy tier)
+                                | over_buffered (Heavy tier AND class B or C)
+
+    Headline trapped cash = sum of excess_buffer_value over the over_buffered
+    rows: capital freeable by cutting demand variability or lead time on those
+    SKUs, without lowering the service level anywhere.
     """
-    The punchline: cross-tab ABC class vs. implied stock position.
-    Where is the catalog over-buffered (trapped cash) vs. under-buffered
-    (stockout risk)? Quantify trapped $ — this is the headline number.
-    """
-    raise NotImplementedError
+    out = df.copy()
+    out["buffer_intensity"] = out["safety_stock_value"] / out["annual_demand_value"]
+    out["buffer_intensity_tier"] = pd.qcut(
+        out["buffer_intensity"], 3, labels=["Light", "Medium", "Heavy"]
+    )
+
+    median_intensity = out["buffer_intensity"].median()
+    out["buffer_benchmark_value"] = median_intensity * out["annual_demand_value"]
+    out["excess_buffer_value"] = (
+        out["safety_stock_value"] - out["buffer_benchmark_value"]
+    ).clip(lower=0)
+
+    heavy = out["buffer_intensity_tier"] == "Heavy"
+    out["buffer_flag"] = "efficient"
+    out.loc[heavy, "buffer_flag"] = "watch"
+    out.loc[heavy & out["abc_class"].isin(["B", "C"]), "buffer_flag"] = "over_buffered"
+    return out
 
 
 def sensitivity_table(df: pd.DataFrame) -> pd.DataFrame:
