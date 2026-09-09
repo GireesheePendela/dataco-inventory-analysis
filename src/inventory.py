@@ -2,7 +2,7 @@
 The four analytical layers, as reusable functions.
 
 Input:  per-SKU demand + lead-time stats  (outputs/sku_demand_profile.csv).
-Output: outputs/sku_metrics.csv  (one row per SKU; the ONLY file app.py reads).
+Output: outputs/sku_metrics.csv  (one row per SKU; the file the Power BI report reads).
 
 Every function takes a DataFrame and returns a copy with new columns, so they
 can be chained in the notebook.

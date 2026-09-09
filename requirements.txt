@@ -1,6 +1,4 @@
-# Deployed app dependencies ONLY (Streamlit Community Cloud installs this file).
-# Keep this list minimal so the deployed app stays lean.
-streamlit
+# Pipeline dependencies — what src/ needs to regenerate the outputs/ CSVs.
 pandas
 duckdb
-plotly
+numpy

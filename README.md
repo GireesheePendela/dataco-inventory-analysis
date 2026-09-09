@@ -1,7 +1,10 @@
 # DataCo Inventory Analytics
 
 End-to-end inventory analytics on real supply-chain transaction data:
-**SQL (DuckDB) → pandas → Streamlit dashboard**, deployed on Streamlit Community Cloud.
+**SQL (DuckDB) → pandas pipeline → Power BI report**.
+
+The pipeline (SQL + Python) turns ~180k raw order rows into `outputs/sku_metrics.csv`,
+one row per SKU. A Power BI report reads that single file — see [Dashboard](#dashboard).
 
 > **v1 scope:** the inventory core only (turnover, ABC, EOQ, safety stock / reorder point,
 > mismatch analysis). Logistics and optimization are planned extensions.
@@ -37,10 +40,11 @@ Defined in one place: `src/inventory.py` (top of file).
 
 ```
 data/        raw CSV (gitignored) + data dictionary
-notebooks/   analysis.ipynb — all exploratory work
-src/         extract.py (SQL aggregation) + inventory.py (the 4 layers)
-outputs/     sku_metrics.csv — the ONE finished file app.py reads
-app.py       thin Streamlit display layer (reads the CSV, nothing heavier)
+notebooks/   analysis.ipynb — the full analysis, all layers
+src/         extract.py (SQL aggregation) + inventory.py (the analytical layers)
+outputs/     sku_metrics.csv — the ONE finished file the Power BI report reads
+             service_level_sensitivity.csv — 90/95/99% buffer comparison
+report.pbix  Power BI report built on outputs/sku_metrics.csv
 ```
 
 ## Run locally
@@ -51,8 +55,15 @@ python -m venv .venv
 pip install -r requirements.txt -r requirements-dev.txt
 # 1. put DataCoSupplyChainDataset.csv in data/
 # 2. work through notebooks/analysis.ipynb -> writes outputs/sku_metrics.csv
-streamlit run app.py
 ```
+
+## Dashboard
+
+`report.pbix` (Power BI Desktop) reads `outputs/sku_metrics.csv` — no live
+connection, no heavy compute in the report. Views: KPI header (trapped cash, EOQ
+saving, over-buffered SKU count), ABC Pareto, and a filterable reorder-point /
+safety-stock table sliceable by ABC class and buffer flag, with a 90/95/99%
+service-level selector. Screenshots below.
 
 ## Planned extensions
 
