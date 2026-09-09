@@ -278,6 +278,37 @@ def mismatch_analysis(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def sensitivity_table(df: pd.DataFrame) -> pd.DataFrame:
-    """Recompute safety stock / buffer cash at 90 / 95 / 99% service level."""
-    raise NotImplementedError
+def sensitivity_table(df: pd.DataFrame, by: str | None = None) -> pd.DataFrame:
+    """Safety-stock units and buffer capital at each service level.
+
+    df must carry safety_stock_90/95/99 and avg_price (Layer 4 output). Every
+    row is compared to the 95% baseline (delta_vs_baseline, pct_vs_baseline).
+    Pass by="abc_class" (or any column) to break the table out by group.
+    """
+    levels = sorted(Z_BY_SERVICE_LEVEL)
+
+    def summarise(g: pd.DataFrame) -> pd.DataFrame:
+        rows = []
+        for lvl in levels:
+            tag = str(round(lvl * 100))
+            rows.append({
+                "service_level": lvl,
+                "z": Z_BY_SERVICE_LEVEL[lvl],
+                "safety_stock_units": g[f"safety_stock_{tag}"].sum(),
+                "buffer_value": float((g[f"safety_stock_{tag}"] * g["avg_price"]).sum()),
+            })
+        res = pd.DataFrame(rows)
+        base = res.loc[res["service_level"] == BASELINE_SERVICE_LEVEL, "buffer_value"].iloc[0]
+        res["delta_vs_baseline"] = res["buffer_value"] - base
+        res["pct_vs_baseline"] = res["buffer_value"] / base - 1.0
+        return res
+
+    if by is None:
+        return summarise(df)
+
+    parts = []
+    for key, g in df.groupby(by):
+        t = summarise(g)
+        t.insert(0, by, key)
+        parts.append(t)
+    return pd.concat(parts, ignore_index=True)
