@@ -5,7 +5,7 @@ By [Gireeshee Pendela](https://github.com/GireesheePendela)
 End-to-end inventory analytics on real supply-chain transaction data:
 **SQL (DuckDB) → pandas pipeline → Power BI report**.
 
-The pipeline (SQL + Python) turns ~180k raw order rows into `outputs/sku_metrics.csv`,
+The pipeline (SQL + Python) turns ≈180k raw order rows into `outputs/sku_metrics.csv`,
 one row per SKU. A Power BI report reads that single file — see [Dashboard](#dashboard).
 
 > **v1 scope:** the inventory core only (turnover, ABC, EOQ, safety stock / reorder point,
@@ -33,7 +33,7 @@ therefore labelled **"implied"**.
 
 ## Method
 
-1. **Aggregate (SQL)** — DuckDB rolls ~180k order rows into a SKU × month demand
+1. **Aggregate (SQL)** — DuckDB rolls ≈180k order rows into a SKU × month demand
    series plus per-SKU lead-time statistics (`src/extract.py`).
 2. **Demand profile (pandas)** — each SKU's monthly series is padded with zero
    demand between its first and last sale, then collapsed to mean/σ. SKUs with
@@ -54,8 +54,8 @@ therefore labelled **"implied"**.
 
 | Symbol | Meaning | Value | Justification |
 |--------|---------|-------|---------------|
-| `S` | ordering cost per order | **$75** | staff time to raise a PO, receive the shipment, and match the invoice; industry range ~$50–100 |
-| `H_RATE` | annual holding cost as a fraction of unit price | **25%** | ~5% cost of capital + ~15% warehouse/insurance/handling + ~5% obsolescence & shrinkage (standard 20–30%). Applied to price, not a flat $/unit, so it scales across a $10–$2,000 catalogue. |
+| `S` | ordering cost per order | **$75** | staff time to raise a PO, receive the shipment, and match the invoice; industry range ≈$50–100 |
+| `H_RATE` | annual holding cost as a fraction of unit price | **25%** | ≈5% cost of capital + ≈15% warehouse/insurance/handling + ≈5% obsolescence & shrinkage (standard 20–30%). Applied to price, not a flat $/unit, so it scales across a $10–$2,000 catalogue. |
 | service level | baseline (also tested at 90% / 99%) | 95% (z ≈ 1.65) | industry-standard default |
 
 Defined in one place: `src/inventory.py` (top of file).
@@ -65,12 +65,12 @@ Defined in one place: `src/inventory.py` (top of file).
 - **Value is concentrated:** 16 SKUs (14% of the catalogue) are class A —
   79% of annual demand value. 74 SKUs (63%) are class C — just 5% of value.
 - **EOQ opportunity:** switching from a monthly-reorder baseline to EOQ cuts
-  catalogue-wide ordering + holding cost from ~$370K to ~$225K a year
-  (**~$145K, 39%**), with the savings concentrated in class-A SKUs.
+  catalogue-wide ordering + holding cost from ≈$370K to ≈$225K a year
+  (**≈$145K, 39%**), with the savings concentrated in class-A SKUs.
 - **Buffer capital:** $285K of working capital sits in safety stock at 95%
-  service (~$222K at 90%, ~$403K at 99% — the last 4 points of service cost
-  ~41% more buffer cash).
-- **Trapped cash:** **~$28K** is tied up in **39 over-buffered class B/C SKUs** —
+  service (≈$222K at 90%, ≈$403K at 99% — the last 4 points of service cost
+  ≈41% more buffer cash).
+- **Trapped cash:** **≈$28K** is tied up in **39 over-buffered class B/C SKUs** —
   safety stock above a median-efficiency benchmark for their throughput. Class B
   is the worst offender (22 of 28 B-SKUs are "Heavy" buffer-intensity despite
   being only 16% of catalogue value).
@@ -78,12 +78,12 @@ Defined in one place: `src/inventory.py` (top of file).
 ## Recommendations
 
 1. **Adopt EOQ ordering, starting with class A** — the 16 A-SKUs drive most of
-   the ~$145K/year saving available from right-sizing order quantities.
+   the ≈$145K/year saving available from right-sizing order quantities.
 2. **Move to a class-differentiated service policy** — hold class A at 99%
    service, B/C at 95%. This costs **+$69K** in extra buffer vs. **+$118K** to
    lift the *entire* catalogue to 99% — the same protection where the value is,
    40% cheaper, and nothing drops below the 95% floor.
-3. **Attack the ~$28K trapped in over-buffered class B/C SKUs** through demand
+3. **Attack the ≈$28K trapped in over-buffered class B/C SKUs** through demand
    smoothing and shorter supplier lead times — not by cutting their service
    level. Class B (industrial electronics, first-aid kits, DVDs) is the priority.
 4. **Validate the 33 `insufficient_history` SKUs** before acting on their
