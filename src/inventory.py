@@ -312,3 +312,23 @@ def sensitivity_table(df: pd.DataFrame, by: str | None = None) -> pd.DataFrame:
         t.insert(0, by, key)
         parts.append(t)
     return pd.concat(parts, ignore_index=True)
+
+
+def sigma_source_split(df: pd.DataFrame) -> pd.DataFrame:
+    """How much of the headline numbers rest on estimated rather than measured volatility.
+
+    Splits the catalogue by sigma_source (per_sku = measured from the SKU's own
+    history, class_fallback = borrowed from its ABC class) and reports SKU count,
+    safety-stock capital at the baseline service level, over-buffered SKU count and
+    trapped cash, plus a total row. Needs mismatch_analysis() first.
+    """
+    g = df.assign(over_buffered=df["buffer_flag"] == "over_buffered")
+    g["trapped_cash"] = g["excess_buffer_value"].where(g["over_buffered"], 0.0)
+    out = g.groupby("sigma_source").agg(
+        skus=("sku", "size"),
+        safety_stock_capital=("safety_stock_value", "sum"),
+        over_buffered_skus=("over_buffered", "sum"),
+        trapped_cash=("trapped_cash", "sum"),
+    ).reindex(["per_sku", "class_fallback"])
+    out.loc["total"] = out.sum()
+    return out.rename_axis("sigma_source").reset_index()
