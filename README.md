@@ -14,7 +14,7 @@ one row per SKU. A Power BI report reads that single file — see [Dashboard](#d
 > **v1 scope:** the inventory core only (turnover, ABC, EOQ, safety stock / reorder point,
 > mismatch analysis). Logistics and optimization are planned extensions.
 
-![Overview page](images/overview.png)
+![Overview page](docs/assets/powerbi-overview.png)
 
 ## Business question
 
@@ -88,7 +88,7 @@ Defined in one place: `src/inventory.py` (top of file).
 2. **Move to a class-differentiated service policy** — hold class A at 99%
    service, B/C at 95%. This costs **+$69K** in extra buffer (≈$31K of it on the
    8 class-A SKUs with estimated volatility) vs. **+$118K** to lift the *entire*
-   catalogue to 99% — the same protection where the value is, 40% cheaper, and
+   catalogue to 99% — the same protection where the value is, 42% cheaper, and
    nothing drops below the 95% floor.
 3. **Go after the trapped cash in over-buffered class B/C SKUs** through demand
    smoothing and shorter supplier lead times — not by cutting their service
@@ -126,8 +126,8 @@ connection, no compute inside the report.
   over-buffered, with a 90/95/99% service-level selector.
 - **Sensitivity** — buffer capital vs. service level, by ABC class.
 
-![Reorder policy page](images/reorder-policy.png)
-![Sensitivity page](images/sensitivity.png)
+![Reorder policy page](docs/assets/powerbi-reorder-policy.png)
+![Sensitivity page](docs/assets/powerbi-sensitivity.png)
 
 ## Repo layout
 
@@ -136,11 +136,10 @@ data/        raw CSV (gitignored) + data dictionary
 notebooks/   analysis.ipynb — the full analysis, all layers
 src/         extract.py (SQL aggregation) + inventory.py (the analytical layers)
              build_site.py (generates the project site from the outputs)
-docs/        the GitHub Pages site (generated — do not edit by hand)
+docs/        GitHub Pages site and its assets: charts, Power BI screenshots (index.html is generated)
 outputs/     sku_metrics.csv — the ONE finished file the Power BI report reads
              service_level_sensitivity.csv — 90/95/99% buffer comparison
 report.pbix  Power BI report built on outputs/sku_metrics.csv
-images/      report screenshots used in this README
 ```
 
 ## Run locally

@@ -3,7 +3,7 @@ Build the GitHub Pages site (docs/index.html) from the finished outputs.
 
 Reads outputs/sku_metrics.csv and outputs/service_level_sensitivity.csv, the chart
 images saved inside notebooks/analysis.ipynb, and the Power BI screenshots in
-images/. Writes a static, self-contained page to docs/. Every figure on the page is
+docs/assets/powerbi-*.png. Writes a static, self-contained page to docs/. Every figure on the page is
 computed from the CSVs, so it cannot drift from the analysis.
 
 Run from the repo root:
@@ -15,7 +15,6 @@ from __future__ import annotations
 import base64
 import html
 import json
-import shutil
 import struct
 from pathlib import Path
 
@@ -147,10 +146,10 @@ def build() -> None:
         (ASSETS / f"chart-{slug}.png").write_bytes(data)
         sizes[slug] = struct.unpack(">II", data[16:24])
     for slug, *_ in SCREENSHOTS:
-        shutil.copyfile(Path("images") / f"{slug}.png", ASSETS / f"powerbi-{slug}.png")
-        sizes[f"powerbi-{slug}"] = struct.unpack(
-            ">II", (ASSETS / f"powerbi-{slug}.png").read_bytes()[16:24]
-        )
+        shot = ASSETS / f"powerbi-{slug}.png"
+        if not shot.exists():
+            raise SystemExit(f"missing screenshot {shot} (save the Power BI page screenshots there)")
+        sizes[f"powerbi-{slug}"] = struct.unpack(">II", shot.read_bytes()[16:24])
 
     # ---- headline numbers ----------------------------------------------------
     n_sku = len(m)
