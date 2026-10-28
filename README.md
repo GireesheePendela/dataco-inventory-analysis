@@ -2,6 +2,9 @@
 
 By [Gireeshee Pendela](https://github.com/GireesheePendela)
 
+**[Project site](https://gireesheependela.github.io/dataco-inventory-analysis/)** —
+every chart, table and finding on one page, with a sortable SKU explorer.
+
 End-to-end inventory analytics on real supply-chain transaction data:
 **SQL (DuckDB) → pandas pipeline → Power BI report**.
 
@@ -71,24 +74,45 @@ Defined in one place: `src/inventory.py` (top of file).
   service (≈$222K at 90%, ≈$403K at 99% — the last 4 points of service cost
   ≈41% more buffer cash).
 - **Trapped cash:** **≈$28K** is tied up in **39 over-buffered class B/C SKUs** —
-  safety stock above a median-efficiency benchmark for their throughput. Class B
-  is the worst offender (22 of 28 B-SKUs are "Heavy" buffer-intensity despite
-  being only 16% of catalogue value).
+  safety stock above a median-efficiency benchmark for their throughput. **Only
+  ≈$6K of that (22 SKUs) rests on measured volatility**; the other ≈$21K sits on
+  17 short-history SKUs whose volatility is a class-level estimate (see
+  [Confidence and limitations](#confidence-and-limitations)). Class B looks worst
+  (22 of 28 B-SKUs are "Heavy" buffer-intensity), but 17 of those 22 are
+  estimate-driven — treat that ranking as a hypothesis.
 
 ## Recommendations
 
 1. **Adopt EOQ ordering, starting with class A** — the 16 A-SKUs drive most of
    the ≈$145K/year saving available from right-sizing order quantities.
 2. **Move to a class-differentiated service policy** — hold class A at 99%
-   service, B/C at 95%. This costs **+$69K** in extra buffer vs. **+$118K** to
-   lift the *entire* catalogue to 99% — the same protection where the value is,
-   40% cheaper, and nothing drops below the 95% floor.
-3. **Attack the ≈$28K trapped in over-buffered class B/C SKUs** through demand
+   service, B/C at 95%. This costs **+$69K** in extra buffer (≈$31K of it on the
+   8 class-A SKUs with estimated volatility) vs. **+$118K** to lift the *entire*
+   catalogue to 99% — the same protection where the value is, 40% cheaper, and
+   nothing drops below the 95% floor.
+3. **Go after the trapped cash in over-buffered class B/C SKUs** through demand
    smoothing and shorter supplier lead times — not by cutting their service
-   level. Class B (industrial electronics, first-aid kits, DVDs) is the priority.
+   level. Start with the ≈$6K on SKUs with measured volatility; collect more
+   history on the 17 estimate-driven SKUs before acting on the other ≈$21K.
 4. **Validate the 33 `insufficient_history` SKUs** before acting on their
    reorder points — their demand variability is a class-level estimate
    (coefficient-of-variation fallback), not a measured one.
+
+## Confidence and limitations
+
+- **28% of SKUs have estimated volatility.** 33 of 118 SKUs have under 6 months of
+  history, so their demand variability is borrowed from their ABC class. They hold
+  56% of safety-stock capital (≈$159K of ≈$285K) and 20 of the 28 class-B SKUs, so
+  the class-B dollar figures in particular are estimate-driven.
+- **The EOQ saving is against a hypothetical baseline.** The dataset records
+  customer sales, not the business's own purchase orders, so the ≈$145K is versus
+  a "reorder monthly" policy, not versus actual ordering.
+- **No on-hand inventory.** Turnover is implied (EOQ/2 cycle-stock proxy) and ranks
+  relative velocity only; it cannot prove overstocking.
+- **Only demand variability is buffered.** Lead times are short and stable
+  (0–6 days), so lead-time variability would move the numbers little, but it is
+  not modelled.
+- **`S` and `H_RATE` are assumptions**, not data — the dollar figures scale with them.
 
 ## Dashboard
 
@@ -111,6 +135,8 @@ connection, no compute inside the report.
 data/        raw CSV (gitignored) + data dictionary
 notebooks/   analysis.ipynb — the full analysis, all layers
 src/         extract.py (SQL aggregation) + inventory.py (the analytical layers)
+             build_site.py (generates the project site from the outputs)
+docs/        the GitHub Pages site (generated — do not edit by hand)
 outputs/     sku_metrics.csv — the ONE finished file the Power BI report reads
              service_level_sensitivity.csv — 90/95/99% buffer comparison
 report.pbix  Power BI report built on outputs/sku_metrics.csv
@@ -126,6 +152,8 @@ pip install -r requirements.txt -r requirements-dev.txt
 # 1. put DataCoSupplyChainDataset.csv in data/
 # 2. work through notebooks/analysis.ipynb -> writes outputs/sku_metrics.csv
 # 3. open report.pbix in Power BI Desktop
+# 4. regenerate the project site (docs/) after any change to the outputs:
+python -m src.build_site
 ```
 
 ## Planned extensions
